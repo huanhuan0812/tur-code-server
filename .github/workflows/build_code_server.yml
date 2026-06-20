@@ -61,17 +61,48 @@ jobs:
           echo "=== NDK 环境变量 ==="
           echo "NDK: $NDK"
           echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+          
+          # 检查 NDK 目录权限
+          echo "=== NDK 目录权限 ==="
+          ls -la /home/runner/lib/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin/ || echo "NDK 工具链不存在"
 
-      - name: 编译 code-server
+      - name: 编译 code-server（带详细日志）
         run: |
           echo '=========================================='
           echo '开始编译 code-server 4.125.0'
           echo '当前用户: ' && whoami
           echo '当前目录: ' && pwd
           echo '=========================================='
-
+          
+          # 检查环境变量
+          echo "=== 环境变量检查 ==="
+          echo "TERMUX_INSTALL_DEPS: $TERMUX_INSTALL_DEPS"
+          echo "TERMUX_NO_CLEAN: $TERMUX_NO_CLEAN"
+          echo "NDK: $NDK"
+          echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+          echo "PATH: $PATH"
+          
+          # 检查 build-package.sh 是否存在
+          if [ ! -f "./build-package.sh" ]; then
+            echo "❌ build-package.sh 不存在！"
+            exit 1
+          fi
+          
+          # 查看 build-package.sh 内容（前100行）
+          echo "=== build-package.sh 开头内容 ==="
+          head -20 ./build-package.sh
+          
           echo '开始编译 (aarch64)...'
-          TERMUX_INSTALL_DEPS=true TERMUX_NO_CLEAN=true ./build-package.sh -a aarch64 code-server
+          
+          # 使用 bash -x 来显示详细执行过程
+          bash -x ./build-package.sh -a aarch64 code-server 2>&1 | tee build.log
+          
+          # 检查编译是否成功
+          if [ $? -ne 0 ]; then
+            echo "❌ 编译失败！查看最后100行日志："
+            tail -100 build.log
+            exit 1
+          fi
 
           echo '=========================================='
           echo '编译完成！'
@@ -95,3 +126,10 @@ jobs:
             debs/*.deb
             **/*.deb
           if-no-files-found: warn
+
+      - name: 上传编译日志（如果失败）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
