@@ -62,11 +62,30 @@ jobs:
           echo "NDK: $NDK"
           echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
           
-          # 检查 NDK 目录权限
-          echo "=== NDK 目录权限 ==="
-          ls -la /home/runner/lib/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin/ || echo "NDK 工具链不存在"
+          # 检查 NDK 工具链
+          echo "=== NDK 工具链 ==="
+          ls -la /home/runner/lib/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64* || echo "找不到 aarch64 工具链"
 
-      - name: 编译 code-server（带详细日志）
+      - name: 检查 TUR 包配置
+        run: |
+          echo "=== 检查 code-server 包配置 ==="
+          if [ -d "tur/code-server" ]; then
+            ls -la tur/code-server/
+            cat tur/code-server/build.sh 2>/dev/null || echo "build.sh 不存在"
+          else
+            echo "tur/code-server 目录不存在"
+            find . -name "code-server" -type d 2>/dev/null
+          fi
+          
+          # 检查 repo.json
+          if [ -f "repo.json" ]; then
+            echo "=== repo.json 内容 ==="
+            cat repo.json
+          else
+            echo "repo.json 不存在"
+          fi
+
+      - name: 编译 code-server（详细调试）
         run: |
           echo '=========================================='
           echo '开始编译 code-server 4.125.0'
@@ -74,34 +93,41 @@ jobs:
           echo '当前目录: ' && pwd
           echo '=========================================='
           
-          # 检查环境变量
-          echo "=== 环境变量检查 ==="
+          # 设置所有必要的环境变量
+          export TERMUX_INSTALL_DEPS=true
+          export TERMUX_NO_CLEAN=true
+          export TERMUX_PACKAGES_DIRECTORY="tur"
+          export TERMUX_MAKE_PROCESSES=4
+          
+          echo "=== 环境变量 ==="
           echo "TERMUX_INSTALL_DEPS: $TERMUX_INSTALL_DEPS"
           echo "TERMUX_NO_CLEAN: $TERMUX_NO_CLEAN"
+          echo "TERMUX_PACKAGES_DIRECTORY: $TERMUX_PACKAGES_DIRECTORY"
           echo "NDK: $NDK"
           echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
-          echo "PATH: $PATH"
-          
-          # 检查 build-package.sh 是否存在
-          if [ ! -f "./build-package.sh" ]; then
-            echo "❌ build-package.sh 不存在！"
-            exit 1
-          fi
-          
-          # 查看 build-package.sh 内容（前100行）
-          echo "=== build-package.sh 开头内容 ==="
-          head -20 ./build-package.sh
           
           echo '开始编译 (aarch64)...'
           
-          # 使用 bash -x 来显示详细执行过程
-          bash -x ./build-package.sh -a aarch64 code-server 2>&1 | tee build.log
+          # 先检查 build-package.sh 脚本的语法
+          echo "=== 检查 build-package.sh 语法 ==="
+          bash -n ./build-package.sh || echo "语法错误"
           
-          # 检查编译是否成功
-          if [ $? -ne 0 ]; then
-            echo "❌ 编译失败！查看最后100行日志："
-            tail -100 build.log
-            exit 1
+          # 查看 build-package.sh 的 main 函数
+          echo "=== build-package.sh 的 main 函数 ==="
+          grep -A 20 "^main()" ./build-package.sh || echo "找不到 main 函数"
+          
+          # 使用 strace 或直接执行查看详细输出
+          echo "=== 开始执行 build-package.sh ==="
+          set -x
+          ./build-package.sh -a aarch64 code-server 2>&1 | tee build.log
+          BUILD_RESULT=${PIPESTATUS[0]}
+          set +x
+          
+          if [ $BUILD_RESULT -ne 0 ]; then
+            echo "❌ 编译失败！退出码: $BUILD_RESULT"
+            echo "=== 最后200行日志 ==="
+            tail -200 build.log
+            exit $BUILD_RESULT
           fi
 
           echo '=========================================='
@@ -117,6 +143,10 @@ jobs:
           else
             echo "debs/ 目录不存在"
           fi
+          
+          # 查找可能的输出目录
+          echo "=== 查找所有包相关目录 ==="
+          find . -type d -name "*deb*" -o -name "*pkg*" 2>/dev/null | head -20
 
       - name: 上传编译产物
         uses: actions/upload-artifact@v4
