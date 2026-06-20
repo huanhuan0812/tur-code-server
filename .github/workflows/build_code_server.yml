@@ -1,0 +1,39 @@
+name: Build code-server with TUR CI
+
+on:
+  workflow_dispatch:  # 手动触发
+  push:
+    paths:
+      - 'tur/code-server/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装依赖（zstd）
+        run: |
+          sudo apt update
+          sudo apt install -y zstd
+
+      - name: 执行 TUR 标准编译脚本
+        run: |
+          # 赋予执行权限
+          chmod +x continuous-build-wrapper.sh
+          chmod +x scripts/run-docker.sh
+          
+          # 使用 continuous-build-wrapper.sh 编译 code-server
+          # 它会自动处理 Docker 环境、依赖和超时
+          ./continuous-build-wrapper.sh ./build-package.sh -a aarch64 code-server
+
+      - name: 上传编译产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-server-deb
+          path: |
+            debs/*.deb
+            output/*.deb
+            # 有些版本可能在 output 目录
