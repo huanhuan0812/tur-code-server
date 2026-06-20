@@ -18,7 +18,7 @@ jobs:
       - name: 安装系统依赖
         run: |
           sudo apt update
-          sudo apt install -y zstd wget
+          sudo apt install -y zstd
 
       - name: 执行 setup-environment.sh（TUR 标准初始化）
         run: |
@@ -28,95 +28,25 @@ jobs:
           ls -la scripts/ 2>/dev/null || echo "scripts/ 目录不存在"
           ls -la build-package.sh 2>/dev/null || echo "build-package.sh 不存在"
 
-      - name: 设置 Termux 构建环境
-        run: |
-          echo "CPU型号: $(lscpu | grep 'Model name' | cut -d: -f2 | xargs)"
-          echo "逻辑核心数: $(nproc)"
-          echo "物理核心数: $(lscpu | grep 'Core(s) per socket' | cut -d: -f2 | xargs)"
-          echo "内存总量: $(free -h | awk '/^Mem:/ {print $2}')"
-          echo "已用内存: $(free -h | awk '/^Mem:/ {print $3}')"
-          echo "可用内存: $(free -h | awk '/^Mem:/ {print $7}')"
-          # 安装 Termux 构建所需依赖
-          sudo apt install -y \
-            autoconf \
-            automake \
-            autopoint \
-            bison \
-            build-essential \
-            curl \
-            gettext \
-            git \
-            libtool \
-            pkg-config \
-            python3 \
-            python3-pip \
-            unzip
-
-          # 创建 Termux 构建目录结构
-          mkdir -p $HOME/termux-packages
-          cd $HOME/termux-packages
-
-          # 克隆 Termux 包构建脚本
-          if [ ! -d termux-packages ]; then
-            git clone https://github.com/termux/termux-packages.git
-          fi
-          cd termux-packages
-
-          # 设置环境变量
-          export TERMUX_PACKAGES_DIR=$PWD
-          export TERMUX_ARCH=aarch64
-          export TERMUX_PREFIX=/data/data/com.termux/files/usr
-
-          # 下载并安装 Termux 工具链
-          ./scripts/setup-termux-arch.sh
-
       - name: 编译 code-server
         run: |
-          export TERMUX_ARCH=aarch64
-          export TERMUX_PREFIX=/data/data/com.termux/files/usr
-          export TERMUX_INSTALL_DEPS=true
-          export TERMUX_NO_CLEAN=true
-          export TERMUX_PACKAGES_DIR=$HOME/termux-packages/termux-packages
-
           echo '=========================================='
           echo '开始编译 code-server 4.125.0'
           echo '当前用户: ' && whoami
           echo '当前目录: ' && pwd
           echo '=========================================='
 
-          # 复制 TUR 包定义到 Termux 包目录
-          if [ -f tur/code-server/build.sh ]; then
-            mkdir -p $TERMUX_PACKAGES_DIR/packages/code-server
-            cp -r tur/code-server/* $TERMUX_PACKAGES_DIR/packages/code-server/
-          else
-            echo '错误: 找不到 tur/code-server/build.sh'
-            exit 1
-          fi
-
-          # 执行编译
-          cd $TERMUX_PACKAGES_DIR
-          ./build-package.sh -a aarch64 code-server
+          echo '开始编译 (aarch64)...'
+          TERMUX_INSTALL_DEPS=true TERMUX_NO_CLEAN=true ./build-package.sh -a aarch64 code-server
 
           echo '=========================================='
           echo '编译完成！'
-          echo '=========================================='
+          echo '=========================================='  
 
       - name: 查找 .deb 文件
         run: |
           echo "=== 查找 .deb 文件 ==="
-          
-          # 检查 Termux 包的 debs 目录
-          if [ -d $HOME/termux-packages/termux-packages/debs ]; then
-            echo "找到 debs 目录："
-            ls -la $HOME/termux-packages/termux-packages/debs/
-            # 复制到工作目录
-            cp $HOME/termux-packages/termux-packages/debs/*.deb . || true
-          fi
-          
-          # 也检查当前目录
           find . -name "*.deb" -type f 2>/dev/null || echo "未找到 .deb 文件"
-          
-          # 检查 debs 目录
           if [ -d debs ]; then
             ls -la debs/
           else
@@ -130,5 +60,4 @@ jobs:
           path: |
             debs/*.deb
             **/*.deb
-            *.deb
           if-no-files-found: warn
