@@ -26,28 +26,36 @@ jobs:
           mkdir -p /home/runner/lib
           cd /home/runner/lib
           
-          # 下载 NDK r29
           wget -q https://dl.google.com/android/repository/android-ndk-r29-linux.zip
-          
-          # 解压
           unzip -q android-ndk-r29-linux.zip
-          
-          # 清理 zip 文件
           rm android-ndk-r29-linux.zip
           
-          # 验证安装
           if [ -d "/home/runner/lib/android-ndk-r29" ]; then
             echo "✅ NDK 安装成功"
-            ls -la /home/runner/lib/android-ndk-r29/
           else
             echo "❌ NDK 安装失败"
             exit 1
           fi
           
-          # 设置环境变量
           echo "NDK=/home/runner/lib/android-ndk-r29" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=/home/runner/lib/android-ndk-r29" >> $GITHUB_ENV
           echo "PATH=/home/runner/lib/android-ndk-r29/bin:$PATH" >> $GITHUB_ENV
+
+      - name: 设置 Termux 环境变量
+        run: |
+          # 设置 Termux 架构
+          echo "TERMUX_ARCH=aarch64" >> $GITHUB_ENV
+          echo "TERMUX_PREFIX=/data/data/com.termux/files/usr" >> $GITHUB_ENV
+          echo "TERMUX_BASE_DIR=/data/data/com.termux/files" >> $GITHUB_ENV
+          
+          # 创建模拟的 Termux 目录结构
+          sudo mkdir -p /data/data/com.termux/files/usr
+          sudo mkdir -p /data/data/com.termux/files/home
+          
+          # 创建 TERMUX_ARCH 文件
+          echo "aarch64" | sudo tee /data/TERMUX_ARCH
+          echo "TERMUX_ARCH 文件已创建"
+          cat /data/TERMUX_ARCH
 
       - name: 执行 setup-environment.sh（TUR 标准初始化）
         run: |
@@ -56,36 +64,8 @@ jobs:
           echo "=== 验证目录结构 ==="
           ls -la scripts/ 2>/dev/null || echo "scripts/ 目录不存在"
           ls -la build-package.sh 2>/dev/null || echo "build-package.sh 不存在"
-          
-          # 验证 NDK 环境变量是否生效
-          echo "=== NDK 环境变量 ==="
-          echo "NDK: $NDK"
-          echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
-          
-          # 检查 NDK 工具链
-          echo "=== NDK 工具链 ==="
-          ls -la /home/runner/lib/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64* || echo "找不到 aarch64 工具链"
 
-      - name: 检查 TUR 包配置
-        run: |
-          echo "=== 检查 code-server 包配置 ==="
-          if [ -d "tur/code-server" ]; then
-            ls -la tur/code-server/
-            cat tur/code-server/build.sh 2>/dev/null || echo "build.sh 不存在"
-          else
-            echo "tur/code-server 目录不存在"
-            find . -name "code-server" -type d 2>/dev/null
-          fi
-          
-          # 检查 repo.json
-          if [ -f "repo.json" ]; then
-            echo "=== repo.json 内容 ==="
-            cat repo.json
-          else
-            echo "repo.json 不存在"
-          fi
-
-      - name: 编译 code-server（详细调试）
+      - name: 编译 code-server
         run: |
           echo '=========================================='
           echo '开始编译 code-server 4.125.0'
@@ -93,42 +73,13 @@ jobs:
           echo '当前目录: ' && pwd
           echo '=========================================='
           
-          # 设置所有必要的环境变量
-          export TERMUX_INSTALL_DEPS=true
-          export TERMUX_NO_CLEAN=true
-          export TERMUX_PACKAGES_DIRECTORY="tur"
-          export TERMUX_MAKE_PROCESSES=4
-          
           echo "=== 环境变量 ==="
-          echo "TERMUX_INSTALL_DEPS: $TERMUX_INSTALL_DEPS"
-          echo "TERMUX_NO_CLEAN: $TERMUX_NO_CLEAN"
-          echo "TERMUX_PACKAGES_DIRECTORY: $TERMUX_PACKAGES_DIRECTORY"
+          echo "TERMUX_ARCH: $TERMUX_ARCH"
+          echo "TERMUX_PREFIX: $TERMUX_PREFIX"
           echo "NDK: $NDK"
-          echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
           
           echo '开始编译 (aarch64)...'
-          
-          # 先检查 build-package.sh 脚本的语法
-          echo "=== 检查 build-package.sh 语法 ==="
-          bash -n ./build-package.sh || echo "语法错误"
-          
-          # 查看 build-package.sh 的 main 函数
-          echo "=== build-package.sh 的 main 函数 ==="
-          grep -A 20 "^main()" ./build-package.sh || echo "找不到 main 函数"
-          
-          # 使用 strace 或直接执行查看详细输出
-          echo "=== 开始执行 build-package.sh ==="
-          set -x
-          ./build-package.sh -a aarch64 code-server 2>&1 | tee build.log
-          BUILD_RESULT=${PIPESTATUS[0]}
-          set +x
-          
-          if [ $BUILD_RESULT -ne 0 ]; then
-            echo "❌ 编译失败！退出码: $BUILD_RESULT"
-            echo "=== 最后200行日志 ==="
-            tail -200 build.log
-            exit $BUILD_RESULT
-          fi
+          TERMUX_INSTALL_DEPS=true TERMUX_NO_CLEAN=true ./build-package.sh -a aarch64 code-server
 
           echo '=========================================='
           echo '编译完成！'
@@ -143,10 +94,6 @@ jobs:
           else
             echo "debs/ 目录不存在"
           fi
-          
-          # 查找可能的输出目录
-          echo "=== 查找所有包相关目录 ==="
-          find . -type d -name "*deb*" -o -name "*pkg*" 2>/dev/null | head -20
 
       - name: 上传编译产物
         uses: actions/upload-artifact@v4
@@ -156,10 +103,3 @@ jobs:
             debs/*.deb
             **/*.deb
           if-no-files-found: warn
-
-      - name: 上传编译日志（如果失败）
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
