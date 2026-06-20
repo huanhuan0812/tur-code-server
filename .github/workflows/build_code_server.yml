@@ -18,7 +18,36 @@ jobs:
       - name: 安装系统依赖
         run: |
           sudo apt update
-          sudo apt install -y zstd
+          sudo apt install -y zstd unzip wget
+
+      - name: 安装 Android NDK r29
+        run: |
+          echo "=== 安装 Android NDK r29 ==="
+          mkdir -p /home/runner/lib
+          cd /home/runner/lib
+          
+          # 下载 NDK r29
+          wget -q https://dl.google.com/android/repository/android-ndk-r29-linux.zip
+          
+          # 解压
+          unzip -q android-ndk-r29-linux.zip
+          
+          # 清理 zip 文件
+          rm android-ndk-r29-linux.zip
+          
+          # 验证安装
+          if [ -d "/home/runner/lib/android-ndk-r29" ]; then
+            echo "✅ NDK 安装成功"
+            ls -la /home/runner/lib/android-ndk-r29/
+          else
+            echo "❌ NDK 安装失败"
+            exit 1
+          fi
+          
+          # 设置环境变量
+          echo "NDK=/home/runner/lib/android-ndk-r29" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=/home/runner/lib/android-ndk-r29" >> $GITHUB_ENV
+          echo "PATH=/home/runner/lib/android-ndk-r29/bin:$PATH" >> $GITHUB_ENV
 
       - name: 执行 setup-environment.sh（TUR 标准初始化）
         run: |
@@ -27,6 +56,11 @@ jobs:
           echo "=== 验证目录结构 ==="
           ls -la scripts/ 2>/dev/null || echo "scripts/ 目录不存在"
           ls -la build-package.sh 2>/dev/null || echo "build-package.sh 不存在"
+          
+          # 验证 NDK 环境变量是否生效
+          echo "=== NDK 环境变量 ==="
+          echo "NDK: $NDK"
+          echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
 
       - name: 编译 code-server
         run: |
@@ -41,7 +75,7 @@ jobs:
 
           echo '=========================================='
           echo '编译完成！'
-          echo '=========================================='  
+          echo '=========================================='
 
       - name: 查找 .deb 文件
         run: |
