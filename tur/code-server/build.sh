@@ -65,20 +65,19 @@ _setup_nodejs_24_host() {
 	echo "npm version: $(npm --version)"
 }
 
-# 增强的重试函数
-retry() {
+# 简单重试函数 - 直接执行命令
+retry_cmd() {
 	local max_attempts=3
 	local attempt=1
 	local delay=30
-	local cmd="$@"
 	
 	while [ $attempt -le $max_attempts ]; do
 		echo "=========================================="
-		echo "Attempt $attempt of $max_attempts: $cmd"
+		echo "Attempt $attempt of $max_attempts: $@"
 		echo "Time: $(date)"
 		echo "=========================================="
 		
-		if eval "$cmd"; then
+		if "$@"; then
 			echo "✅ Command succeeded on attempt $attempt"
 			return 0
 		fi
@@ -89,7 +88,7 @@ retry() {
 		if [ $attempt -lt $max_attempts ]; then
 			echo "Retrying in $delay seconds..."
 			sleep $delay
-			delay=$((delay * 2))  # 指数退避
+			delay=$((delay * 2))
 		fi
 		attempt=$((attempt + 1))
 	done
@@ -98,13 +97,15 @@ retry() {
 	return 1
 }
 
-# 带超时的命令执行
+# 带超时的命令执行 - 直接执行，不使用函数嵌套
 run_with_timeout() {
 	local timeout_sec=$1
 	shift
 	local cmd="$@"
 	
 	echo "⏱️  Running with ${timeout_sec}s timeout: $cmd"
+	
+	# 直接执行 timeout 命令
 	if timeout $timeout_sec bash -c "$cmd"; then
 		return 0
 	else
@@ -116,6 +117,27 @@ run_with_timeout() {
 		fi
 		return $exit_code
 	fi
+}
+
+# 执行 npm ci 的专用函数（带重试和降级）
+run_npm_ci() {
+	echo "Attempting npm ci with --no-optional --no-audit..."
+	if run_with_timeout 1800 "npm ci --no-optional --no-audit --progress=true"; then
+		return 0
+	fi
+	
+	echo "⚠️  npm ci with --no-optional failed, trying with --ignore-scripts..."
+	if run_with_timeout 1800 "npm ci --ignore-scripts --no-optional --no-audit"; then
+		return 0
+	fi
+	
+	echo "⚠️  npm ci with --ignore-scripts failed, trying plain npm install..."
+	if run_with_timeout 1800 "npm install --no-optional --no-audit"; then
+		return 0
+	fi
+	
+	echo "❌ All npm ci attempts failed"
+	return 1
 }
 
 termux_step_host_build() {
@@ -145,12 +167,9 @@ termux_step_host_build() {
 	echo "Time: $(date)"
 	echo "=========================================="
 	
-	if ! run_with_timeout 1800 "retry npm ci --no-optional --no-audit --progress=true"; then
-		echo "⚠️  npm ci with --no-optional failed, trying with --ignore-scripts..."
-		if ! run_with_timeout 1800 "retry npm ci --ignore-scripts --no-optional --no-audit"; then
-			echo "❌ All npm ci attempts failed"
-			exit 1
-		fi
+	if ! run_npm_ci; then
+		echo "❌ Failed to install main dependencies"
+		exit 1
 	fi
 	echo "✅ npm ci completed at $(date)"
 	
@@ -160,13 +179,13 @@ termux_step_host_build() {
 	echo "Time: $(date)"
 	echo "=========================================="
 	
-	if ! retry npm install ternary-stream --no-optional --no-audit; then
+	if ! retry_cmd npm install ternary-stream --no-optional --no-audit; then
 		echo "❌ Failed to install ternary-stream"
 		exit 1
 	fi
 	echo "✅ ternary-stream installed at $(date)"
 	
-	# 第三步：安装 VSCode 依赖（分步执行，显示进度）
+	# 第三步：安装 VSCode 依赖
 	echo "=========================================="
 	echo "Step 3/7: Installing VSCode dependencies"
 	echo "Time: $(date)"
@@ -175,10 +194,9 @@ termux_step_host_build() {
 	
 	cd lib/vscode
 	
-	# VSCode 依赖可能很大，单独处理
-	if ! run_with_timeout 1800 "retry npm install --no-optional --no-audit --progress=true"; then
+	if ! run_with_timeout 1800 "npm install --no-optional --no-audit --progress=true"; then
 		echo "⚠️  VSCode npm install failed, trying with --ignore-scripts..."
-		if ! run_with_timeout 1800 "retry npm install --ignore-scripts --no-optional --no-audit"; then
+		if ! run_with_timeout 1800 "npm install --ignore-scripts --no-optional --no-audit"; then
 			echo "❌ All VSCode npm install attempts failed"
 			exit 1
 		fi
@@ -192,19 +210,19 @@ termux_step_host_build() {
 	echo "Time: $(date)"
 	echo "=========================================="
 	
-	if ! retry npm run build --no-optional; then
+	if ! retry_cmd npm run build --no-optional; then
 		echo "❌ Failed to build code-server"
 		exit 1
 	fi
 	echo "✅ code-server build completed at $(date)"
 	
-	# 第五步：构建 VSCode（最耗时）
+	# 第五步：构建 VSCode
 	echo "=========================================="
 	echo "Step 5/7: Building VSCode (this will take 15-25 minutes)"
 	echo "Time: $(date)"
 	echo "=========================================="
 	
-	if ! run_with_timeout 3600 "retry npm run build:vscode --no-optional"; then
+	if ! run_with_timeout 3600 "npm run build:vscode --no-optional"; then
 		echo "❌ Failed to build VSCode"
 		exit 1
 	fi
@@ -216,7 +234,7 @@ termux_step_host_build() {
 	echo "Time: $(date)"
 	echo "=========================================="
 	
-	if ! retry npm run release --no-optional; then
+	if ! retry_cmd npm run release --no-optional; then
 		echo "❌ Failed to create release"
 		exit 1
 	fi
@@ -277,7 +295,7 @@ termux_step_make() {
 	echo "This will take 5-10 minutes..."
 	echo "=========================================="
 	
-	if ! run_with_timeout 3600 "retry npm run release:standalone"; then
+	if ! run_with_timeout 3600 "npm run release:standalone"; then
 		echo "❌ Failed to create standalone release"
 		exit 1
 	fi
