@@ -4,7 +4,7 @@ TERMUX_PKG_LICENSE="MIT"
 TERMUX_PKG_MAINTAINER="@termux-user-repository"
 TERMUX_PKG_VERSION="4.125.0"
 TERMUX_PKG_SRCURL=git+https://github.com/coder/code-server
-TERMUX_PKG_DEPENDS="libandroid-spawn, libsecret, krb5, nodejs-22, ripgrep"
+TERMUX_PKG_DEPENDS="libandroid-spawn, libsecret, krb5, nodejs-24, ripgrep"
 TERMUX_PKG_BUILD_IN_SRC=true
 TERMUX_PKG_HOSTBUILD=true
 TERMUX_PKG_NO_STATICSPLIT=true
@@ -20,10 +20,10 @@ termux_step_post_get_source() {
 		patch -d . -p1 < "./patches/$f";
 	done
 
-	# Ensure that code-server supports node 22
+	# Ensure that code-server supports node 24
 	local _node_version=$(cat .node-version | cut -d. -f1 -)
-	if [ "$_node_version" != 22 ]; then
-		termux_error_exit "Version mismatch: Expected 22, got $_node_version."
+	if [ "$_node_version" != 24 ]; then
+		termux_error_exit "Version mismatch: Expected 24, got $_node_version."
 	fi
 
 	# Remove `--max-old-space-size=8192` from package.json
@@ -33,8 +33,8 @@ termux_step_post_get_source() {
 	rm -rf $TERMUX_HOSTBUILD_MARKER
 }
 
-_setup_nodejs_22() {
-	local NODEJS_VERSION=22.22.0
+_setup_nodejs_24() {
+	local NODEJS_VERSION=24.8.0
 	local NODEJS_FOLDER=${TERMUX_PKG_CACHEDIR}/build-tools/nodejs-${NODEJS_VERSION}
 
 	if [ ! -x "$NODEJS_FOLDER/bin/node" ]; then
@@ -42,7 +42,7 @@ _setup_nodejs_22() {
 		local NODEJS_TAR_FILE=$TERMUX_PKG_TMPDIR/nodejs-$NODEJS_VERSION.tar.xz
 		termux_download https://nodejs.org/dist/v${NODEJS_VERSION}/node-v${NODEJS_VERSION}-linux-x64.tar.xz \
 			"$NODEJS_TAR_FILE" \
-			9aa8e9d2298ab68c600bd6fb86a6c13bce11a4eca1ba9b39d79fa021755d7c37
+			2598641d188b41793930917f1a99a81c9615856b4205d408a44ab676c1acbb3d
 		tar -xf "$NODEJS_TAR_FILE" -C "$NODEJS_FOLDER" --strip-components=1
 	fi
 	export PATH="$NODEJS_FOLDER/bin:$PATH"
@@ -54,7 +54,7 @@ termux_step_host_build() {
 	mv $TERMUX_PREFIX/bin $TERMUX_PREFIX/bin.bp
 	env -i PATH="$PATH" sudo apt update
 	env -i PATH="$PATH" sudo apt install -yq libxkbfile-dev libsecret-1-dev libkrb5-dev
-	_setup_nodejs_22
+	_setup_nodejs_24
 	cd $TERMUX_PKG_SRCDIR
 	npm ci
 	npm install ternary-stream
@@ -65,7 +65,7 @@ termux_step_host_build() {
 }
 
 termux_step_configure() {
-	_setup_nodejs_22
+	_setup_nodejs_24
 }
 
 termux_step_make() {
@@ -107,7 +107,7 @@ termux_step_make_install() {
 	cp -Rf ./release-standalone/* $TERMUX_PREFIX/lib/code-server/
 
 	# Replace nodejs
-	ln -sf $TERMUX_PREFIX/opt/nodejs-22/bin/node $TERMUX_PREFIX/lib/code-server/lib/node
+	ln -sf $TERMUX_PREFIX/opt/nodejs-24/bin/node $TERMUX_PREFIX/lib/code-server/lib/node
 
 	# Replace ripgrep
 	ln -sf $TERMUX_PREFIX/bin/rg $TERMUX_PREFIX/lib/code-server/lib/vscode/node_modules/@vscode/ripgrep/bin/rg
