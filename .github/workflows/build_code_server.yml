@@ -1,7 +1,7 @@
 name: Build code-server with TUR CI
 
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
   push:
     paths:
       - 'tur/code-server/**'
@@ -14,26 +14,31 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 安装依赖（zstd）
+      - name: 安装系统依赖
         run: |
           sudo apt update
           sudo apt install -y zstd
 
-
-      - name: 补全环境
+      - name: 设置构建环境
         run: |
+          chmod +x setup-environment.sh
           ./setup-environment.sh
-
-
-      - name: 执行 TUR 标准编译脚本
-        run: |
-          # 赋予执行权限
-          chmod +x continuous-build-wrapper.sh
-          chmod +x scripts/run-docker.sh
           
-          # 使用 continuous-build-wrapper.sh 编译 code-server
-          # 它会自动处理 Docker 环境、依赖和超时
-          ./continuous-build-wrapper.sh ./build-package.sh -a aarch64 code-server
+          # 确保 run-docker.sh 存在并可执行
+          chmod +x scripts/run-docker.sh
+          chmod +x continuous-build-wrapper.sh
+          chmod +x build-package.sh
+
+      - name: 使用 run-docker.sh 编译 code-server
+        run: |
+          # 方法1: 直接调用 run-docker.sh 进入容器并执行编译
+          ./scripts/run-docker.sh bash -c "
+            cd /home/builder/tur-code-server && \
+            TERMUX_INSTALL_DEPS=true ./build-package.sh -a aarch64 code-server
+          "
+          
+          # 或者方法2: 使用 continuous-build-wrapper.sh（它内部会调用 run-docker.sh）
+          # ./continuous-build-wrapper.sh ./build-package.sh -a aarch64 code-server
 
       - name: 上传编译产物
         uses: actions/upload-artifact@v4
@@ -42,4 +47,3 @@ jobs:
           path: |
             debs/*.deb
             output/*.deb
-            # 有些版本可能在 output 目录
