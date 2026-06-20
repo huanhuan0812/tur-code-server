@@ -18,6 +18,12 @@ jobs:
         run: |
           docker pull ghcr.io/termux/package-builder:latest
 
+      - name: fix environment
+        run: |
+          ./setup-environment.sh
+
+
+
       - name: 编译 code-server
         run: |
           docker run --rm \
