@@ -1,4 +1,4 @@
-name: Build code-server with TUR CI
+name: Build code-server 4.125.0 for TUR
 
 on:
   workflow_dispatch:
@@ -14,31 +14,53 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 安装系统依赖
+      - name: 拉取 Termux 构建镜像
         run: |
-          sudo apt update
-          sudo apt install -y zstd
+          docker pull ghcr.io/termux/package-builder:latest
 
-      - name: 设置构建环境
+      - name: 编译 code-server
         run: |
-          chmod +x setup-environment.sh
-          ./setup-environment.sh
-          
-          # 确保 run-docker.sh 存在并可执行
-          chmod +x scripts/run-docker.sh
-          chmod +x continuous-build-wrapper.sh
-          chmod +x build-package.sh
+          docker run --rm \
+            -v $PWD:/home/builder/tur-code-server \
+            -w /home/builder/tur-code-server \
+            ghcr.io/termux/package-builder:latest \
+            bash -c "
+              set -e
+              echo '=========================================='
+              echo '开始编译 code-server 4.125.0'
+              echo '当前用户: ' && whoami
+              echo '当前目录: ' && pwd
+              echo '=========================================='
+              
+              # 1. 确保 build-package.sh 存在
+              if [ ! -f build-package.sh ]; then
+                echo '⬇️  下载 build-package.sh...'
+                wget -q https://raw.githubusercontent.com/termux/termux-packages/master/build-package.sh
+                chmod +x build-package.sh
+              fi
+              
+              # 2. 检查包定义文件是否存在
+              if [ ! -f tur/code-server/build.sh ]; then
+                echo '❌ 错误: 找不到 tur/code-server/build.sh'
+                exit 1
+              fi
+              
+              # 3. 设置环境变量并编译
+              echo '🔨 开始编译 (aarch64)...'
+              TERMUX_INSTALL_DEPS=true \
+              TERMUX_NO_CLEAN=true \
+              ./build-package.sh -a aarch64 code-server
+              
+              echo '=========================================='
+              echo '✅ 编译完成！'
+              echo '=========================================='
+            "
 
-      - name: 使用 run-docker.sh 编译 code-server
+      - name: 列出编译产物
         run: |
-          # 方法1: 直接调用 run-docker.sh 进入容器并执行编译
-          ./scripts/run-docker.sh bash -c "
-            cd /home/builder/tur-code-server && \
-            TERMUX_INSTALL_DEPS=true ./build-package.sh -a aarch64 code-server
-          "
-          
-          # 或者方法2: 使用 continuous-build-wrapper.sh（它内部会调用 run-docker.sh）
-          # ./continuous-build-wrapper.sh ./build-package.sh -a aarch64 code-server
+          echo "=== 查找 .deb 文件 ==="
+          find . -name "*.deb" -type f 2>/dev/null || echo "未找到 .deb 文件"
+          ls -la debs/ 2>/dev/null || echo "debs/ 目录不存在"
 
       - name: 上传编译产物
         uses: actions/upload-artifact@v4
@@ -46,4 +68,5 @@ jobs:
           name: code-server-deb
           path: |
             debs/*.deb
-            output/*.deb
+            **/*.deb
+          if-no-files-found: warn
