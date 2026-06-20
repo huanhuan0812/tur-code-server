@@ -19,6 +19,12 @@ jobs:
           sudo apt update
           sudo apt install -y zstd
 
+
+      - name: 补全环境
+        run: |
+          ./setup-environment.sh
+
+
       - name: 执行 TUR 标准编译脚本
         run: |
           # 赋予执行权限
