@@ -1,0 +1,50 @@
+name: Download File
+
+on:
+  workflow_dispatch:
+    inputs:
+      download_url:
+        description: 'https://downloads.androidcontents.com/com.github.android/?h=aef1419913388e05f6afb0ffc2ab053f&ip=2a10:484:3:1::14&token=a7b74c87472f0c69f649817e3ede644c58efa36d8530d7ca4d4eb9db77a83e40&t=1782008479&filename=com_github_android_v1.263.0.apk'
+        required: true
+        type: string
+      output_filename:
+        description: 'github mobile.apk'
+        required: false
+        type: string
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download file
+        run: |
+          if [ -z "${{ github.event.inputs.output_filename }}" ]; then
+            # 自动从URL提取文件名
+            FILENAME=$(basename "${{ github.event.inputs.download_url }}")
+          else
+            FILENAME="${{ github.event.inputs.output_filename }}"
+          fi
+          
+          echo "下载文件: $FILENAME"
+          curl -L -o "$FILENAME" "${{ github.event.inputs.download_url }}"
+          
+          # 输出文件信息
+          echo "FILE_NAME=$FILENAME" >> $GITHUB_ENV
+          echo "FILE_SIZE=$(du -h "$FILENAME" | cut -f1)" >> $GITHUB_ENV
+          echo "FILE_PATH=$(pwd)/$FILENAME" >> $GITHUB_ENV
+      
+      - name: 显示文件信息
+        run: |
+          echo "📁 文件名: ${{ env.FILE_NAME }}"
+          echo "📊 文件大小: ${{ env.FILE_SIZE }}"
+          echo "📍 文件路径: ${{ env.FILE_PATH }}"
+      
+      - name: 上传文件作为Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: downloaded-file
+          path: ${{ env.FILE_NAME }}
